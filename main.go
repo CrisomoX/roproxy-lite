@@ -38,9 +38,16 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Check for special URLs (do not redirect to roblox.com)
+	// Check for special URLs (handle POST only for ca-1394-report)
 	if isSpecialURL(ctx) {
-		// Handle special cases (no redirection, just handle like subdomains)
+		if string(ctx.Method()) == "GET" {
+			// Block GET requests for the special URLs
+			ctx.SetStatusCode(405)
+			ctx.SetBody([]byte("GET method is not allowed for this resource."))
+			return
+		}
+		
+		// Handle special POST requests
 		response := makeRequest(ctx, 1, true)
 		defer fasthttp.ReleaseResponse(response)
 
