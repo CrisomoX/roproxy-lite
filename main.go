@@ -15,7 +15,7 @@ var port = os.Getenv("PORT")
 
 var client *fasthttp.Client
 
-// Allowed paths for specific reports
+// Allowed paths that should directly proxy to roblox.com without subdomain redirection
 var allowedPaths = []string{
 	"/illegal-content-report",
 	"/ca-1394-report",
@@ -25,11 +25,11 @@ func main() {
 	h := requestHandler
 	
 	client = &fasthttp.Client{
-		ReadTimeout:        time.Duration(timeout) * time.Second,
+		ReadTimeout: time.Duration(timeout) * time.Second,
 		MaxIdleConnDuration: 60 * time.Second,
 	}
 
-	if err := fasthttp.ListenAndServe(":"+port, h); err != nil {
+	if err := fasthttp.ListenAndServe(":" + port, h); err != nil {
 		log.Fatalf("Error in ListenAndServe: %s", err)
 	}
 }
@@ -43,10 +43,10 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Ensure the URL path is valid
+	// Check if the requested URL is one of the special allowed paths
 	path := string(ctx.Path())
 	if isAllowedURL(path) {
-		// For allowed paths, proxy to roblox.com directly, no redirection
+		// Directly proxy to roblox.com for allowed paths
 		response := makeRequest(ctx, 1, false) // False means no subdomain, use roblox.com
 		defer fasthttp.ReleaseResponse(response)
 
@@ -76,7 +76,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-// Function to check if the requested URL is allowed
+// Function to check if the requested URL is allowed (i.e., should proxy directly to roblox.com)
 func isAllowedURL(urlPath string) bool {
 	for _, allowedPath := range allowedPaths {
 		if strings.HasPrefix(urlPath, allowedPath) {
@@ -91,7 +91,7 @@ func isAllowedURL(urlPath string) bool {
 func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSubdomain bool) *fasthttp.Response {
 	if attempt > retries {
 		resp := fasthttp.AcquireResponse()
-		resp.SetBody([]byte("Proxy failed to connect. Please try again!"))
+		resp.SetBody([]byte("Proxy failed to connect. Please try again!!"))
 		resp.SetStatusCode(500)
 		return resp
 	}
@@ -102,15 +102,15 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSubdomain bool) *fasth
 	// Construct the request URI for Roblox
 	var requestURI string
 	if isSubdomain {
-		// Use dynamic subdomain proxy (e.g., https://games.roblox.com/some-game)
+		// Use dynamic subdomain proxy (e.g., https://games.roblox.com/v1/docs)
 		urlParts := strings.SplitN(string(ctx.Path()), "/", 2)
 		if len(urlParts) < 2 {
 			resp := fasthttp.AcquireResponse()
-			resp.SetBody([]byte("URL format invalid.."))
+			resp.SetBody([]byte("URL format invalid..."))
 			resp.SetStatusCode(400) // Bad Request
 			return resp
 		}
-		// Proxy to dynamic subdomain (e.g., https://games.roblox.com/path)
+		// Proxy to dynamic subdomain (e.g., https://games.roblox.com/v1/docs)
 		requestURI = "https://" + urlParts[0] + ".roblox.com/" + urlParts[1]
 	} else {
 		// Directly proxy to https://roblox.com (no subdomain)
