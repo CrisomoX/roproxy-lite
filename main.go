@@ -40,7 +40,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	// Check for the specific URLs to allow direct access
 	if isSpecialURL(ctx) {
 		// Handle special cases (no redirection, just handle like subdomains)
-		response := makeRequest(ctx, 1)
+		response := makeRequest(ctx, 1, true)
 		defer fasthttp.ReleaseResponse(response)
 
 		body := response.Body()
@@ -52,6 +52,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Default request handling for other requests
 	if len(strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)) < 2 {
 		ctx.SetStatusCode(400)
 		ctx.SetBody([]byte("URL format invalid."))
@@ -59,7 +60,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Default request handling
-	response := makeRequest(ctx, 1)
+	response := makeRequest(ctx, 1, false)
 
 	defer fasthttp.ReleaseResponse(response)
 
@@ -77,7 +78,7 @@ func isSpecialURL(ctx *fasthttp.RequestCtx) bool {
 	return strings.HasPrefix(path, "/ca-1394-report") || strings.HasPrefix(path, "/illegal-content-reporting")
 }
 
-func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
+func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSpecial bool) *fasthttp.Response {
 	if attempt > retries {
 		resp := fasthttp.AcquireResponse()
 		resp.SetBody([]byte("Proxy failed to connect. Please try again."))
@@ -89,8 +90,18 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod(string(ctx.Method()))
+
+	// For special URLs like ca-1394-report or illegal-content-reporting, don't redirect to main site.
 	url := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
-	req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
+
+	if isSpecial {
+		// Handle the special cases by sending them to the proxy site instead of roblox.com
+		req.SetRequestURI("https://" + os.Getenv("HOST") + "/" + url[0] + "/" + url[1])
+	} else {
+		// Default behavior for other paths (redirect to roblox.com)
+		req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
+	}
+
 	req.SetBody(ctx.Request.Body())
 	ctx.Request.Header.VisitAll(func (key, value []byte) {
 		req.Header.Set(string(key), string(value))
@@ -103,7 +114,7 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 
     if err != nil {
 		fasthttp.ReleaseResponse(resp)
-        return makeRequest(ctx, attempt + 1)
+        return makeRequest(ctx, attempt + 1, isSpecial)
     } else {
 		return resp
 	}
