@@ -91,7 +91,7 @@ func isAllowedURL(urlPath string) bool {
 func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSubdomain bool) *fasthttp.Response {
 	if attempt > retries {
 		resp := fasthttp.AcquireResponse()
-		resp.SetBody([]byte("Proxy failed to connect. Please try again."))
+		resp.SetBody([]byte("Proxy failed to connect. Please try again!"))
 		resp.SetStatusCode(500)
 		return resp
 	}
