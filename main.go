@@ -1,12 +1,10 @@
 package main
 
 import (
-    "log"
-    "time"
-    "os"
-    "github.com/valyala/fasthttp"
-    "strconv"
-    "strings"
+	"os"
+	"github.com/valyala/fasthttp"
+	"strconv"
+	"strings"
 )
 
 var timeout, _ = strconv.Atoi(os.Getenv("TIMEOUT"))
@@ -15,48 +13,71 @@ var port = os.Getenv("PORT")
 
 var client *fasthttp.Client
 
-// Your main function and other logic...
+func main() {
+	h := requestHandler
+	
+	client = &fasthttp.Client{
+		ReadTimeout: time.Duration(timeout) * time.Second,
+		MaxIdleConnDuration: 60 * time.Second,
+	}
+
+	if err := fasthttp.ListenAndServe(":" + port, h); err != nil {
+		// Replace log.Fatalf with a simple print statement for now
+		// in case you need to test without "log" import
+		fmt.Printf("Error in ListenAndServe: %s\n", err)
+	}
+}
+
+func requestHandler(ctx *fasthttp.RequestCtx) {
+	val, ok := os.LookupEnv("KEY")
+
+	if ok && string(ctx.Request.Header.Peek("PROXYKEY")) != val {
+		ctx.SetStatusCode(407)
+		ctx.SetBody([]byte("Missing or invalid PROXYKEY header."))
+		return
+	}
+
+	if len(strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)) < 2 {
+		ctx.SetStatusCode(400)
+		ctx.SetBody([]byte("URL format invalid."))
+		return
+	}
+
+	response := makeRequest(ctx, 1)
+
+	defer fasthttp.ReleaseResponse(response)
+
+	body := response.Body()
+	ctx.SetBody(body)
+	ctx.SetStatusCode(response.StatusCode())
+	response.Header.VisitAll(func (key, value []byte) {
+		ctx.Response.Header.Set(string(key), string(value))
+	})
+}
 
 func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 	if attempt > retries {
 		resp := fasthttp.AcquireResponse()
 		resp.SetBody([]byte("Proxy failed to connect. Please try again."))
 		resp.SetStatusCode(500)
+
 		return resp
 	}
 
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod(string(ctx.Method()))
+	url := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
 
-	// Get the path of the request URI
-	urlPath := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
-
-	// Handle cases where the path may not contain a second part
-	if len(urlPath) < 2 {
-		// If there's no second part, we treat it as a root path or a specific endpoint (e.g., "/ca-1394-report")
-		if strings.HasPrefix(urlPath[0], "ca-1394-report") || strings.HasPrefix(urlPath[0], "illegal-content-reporting") {
-			// Handle these special cases directly without redirecting or modifying them
-			req.SetRequestURI("https://roblox.com/" + urlPath[0])
-		} else {
-			// Handle invalid format or missing subdomain
-			resp := fasthttp.AcquireResponse()
-			resp.SetBody([]byte("URL format invalid."))
-			resp.SetStatusCode(400)
-			return resp
-		}
+	// Special case handling for the two URLs you requested to process differently
+	if strings.HasPrefix(url[0], "ca-1394-report") || strings.HasPrefix(url[0], "illegal-content-reporting") {
+		req.SetRequestURI("https://roblox.com/" + url[0])
 	} else {
-		// Continue as usual for other subdomains
-		if strings.HasPrefix(urlPath[0], "ca-1394-report") || strings.HasPrefix(urlPath[0], "illegal-content-reporting") {
-			// Handle these special cases directly without redirecting or modifying them
-			req.SetRequestURI("https://roblox.com/" + urlPath[0] + "/" + urlPath[1])
-		} else {
-			req.SetRequestURI("https://" + urlPath[0] + ".roblox.com/" + urlPath[1])
-		}
+		req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
 	}
 
 	req.SetBody(ctx.Request.Body())
-	ctx.Request.Header.VisitAll(func(key, value []byte) {
+	ctx.Request.Header.VisitAll(func (key, value []byte) {
 		req.Header.Set(string(key), string(value))
 	})
 	req.Header.Set("User-Agent", "RoProxy")
@@ -68,7 +89,7 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 
 	if err != nil {
 		fasthttp.ReleaseResponse(resp)
-		return makeRequest(ctx, attempt+1)
+		return makeRequest(ctx, attempt + 1)
 	} else {
 		return resp
 	}
