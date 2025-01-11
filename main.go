@@ -1,3 +1,16 @@
+package main
+
+import (
+    "log"
+    "time"
+    "os"
+    "github.com/valyala/fasthttp"
+    "strconv"
+    "strings"
+)
+
+// Your main function and other logic...
+
 func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 	if attempt > retries {
 		resp := fasthttp.AcquireResponse()
