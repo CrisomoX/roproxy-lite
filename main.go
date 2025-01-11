@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"log"
+	"time"
 	"os"
 	"github.com/valyala/fasthttp"
 	"strconv"
@@ -23,7 +24,7 @@ func main() {
 	}
 
 	if err := fasthttp.ListenAndServe(":" + port, h); err != nil {
-		fmt.Printf("Error in ListenAndServe: %s\n", err)
+		log.Fatalf("Error in ListenAndServe: %s", err)
 	}
 }
 
@@ -36,12 +37,28 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Check for the specific URLs to allow direct access
+	if isSpecialURL(ctx) {
+		// Handle special cases (no redirection, just handle like subdomains)
+		response := makeRequest(ctx, 1)
+		defer fasthttp.ReleaseResponse(response)
+
+		body := response.Body()
+		ctx.SetBody(body)
+		ctx.SetStatusCode(response.StatusCode())
+		response.Header.VisitAll(func (key, value []byte) {
+			ctx.Response.Header.Set(string(key), string(value))
+		})
+		return
+	}
+
 	if len(strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)) < 2 {
 		ctx.SetStatusCode(400)
 		ctx.SetBody([]byte("URL format invalid."))
 		return
 	}
 
+	// Default request handling
 	response := makeRequest(ctx, 1)
 
 	defer fasthttp.ReleaseResponse(response)
@@ -52,6 +69,12 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	response.Header.VisitAll(func (key, value []byte) {
 		ctx.Response.Header.Set(string(key), string(value))
 	})
+}
+
+// Check if the URL matches special cases for "ca-1394-report" or "illegal-content-reporting"
+func isSpecialURL(ctx *fasthttp.RequestCtx) bool {
+	path := string(ctx.Request.URI().Path())
+	return strings.HasPrefix(path, "/ca-1394-report") || strings.HasPrefix(path, "/illegal-content-reporting")
 }
 
 func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
@@ -67,29 +90,21 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.SetMethod(string(ctx.Method()))
 	url := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
-
-	// Special case handling for the two URLs you requested to process differently
-	if strings.HasPrefix(url[0], "ca-1394-report") || strings.HasPrefix(url[0], "illegal-content-reporting") {
-		req.SetRequestURI("https://roblox.com/" + url[0])
-	} else {
-		req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
-	}
-
+	req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
 	req.SetBody(ctx.Request.Body())
 	ctx.Request.Header.VisitAll(func (key, value []byte) {
 		req.Header.Set(string(key), string(value))
 	})
 	req.Header.Set("User-Agent", "RoProxy")
 	req.Header.Del("Roblox-Id")
-
 	resp := fasthttp.AcquireResponse()
 
 	err := client.Do(req, resp)
 
-	if err != nil {
+    if err != nil {
 		fasthttp.ReleaseResponse(resp)
-		return makeRequest(ctx, attempt + 1)
-	} else {
+        return makeRequest(ctx, attempt + 1)
+    } else {
 		return resp
 	}
 }
