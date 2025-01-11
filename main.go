@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"github.com/valyala/fasthttp"
 	"strconv"
@@ -22,8 +23,6 @@ func main() {
 	}
 
 	if err := fasthttp.ListenAndServe(":" + port, h); err != nil {
-		// Replace log.Fatalf with a simple print statement for now
-		// in case you need to test without "log" import
 		fmt.Printf("Error in ListenAndServe: %s\n", err)
 	}
 }
