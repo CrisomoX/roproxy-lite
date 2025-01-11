@@ -13,13 +13,27 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int) *fasthttp.Response {
 	// Get the path of the request URI
 	urlPath := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
 
-	// Check if the URL matches the specific paths
-	if strings.HasPrefix(urlPath[0], "ca-1394-report") || strings.HasPrefix(urlPath[0], "illegal-content-reporting") {
-		// Handle these special cases directly without redirecting or modifying them
-		req.SetRequestURI("https://roblox.com/" + urlPath[0])
+	// Handle cases where the path may not contain a second part
+	if len(urlPath) < 2 {
+		// If there's no second part, we treat it as a root path or a specific endpoint (e.g., "/ca-1394-report")
+		if strings.HasPrefix(urlPath[0], "ca-1394-report") || strings.HasPrefix(urlPath[0], "illegal-content-reporting") {
+			// Handle these special cases directly without redirecting or modifying them
+			req.SetRequestURI("https://roblox.com/" + urlPath[0])
+		} else {
+			// Handle invalid format or missing subdomain
+			resp := fasthttp.AcquireResponse()
+			resp.SetBody([]byte("URL format invalid."))
+			resp.SetStatusCode(400)
+			return resp
+		}
 	} else {
-		// Otherwise, continue as usual for other subdomains
-		req.SetRequestURI("https://" + urlPath[0] + ".roblox.com/" + urlPath[1])
+		// Continue as usual for other subdomains
+		if strings.HasPrefix(urlPath[0], "ca-1394-report") || strings.HasPrefix(urlPath[0], "illegal-content-reporting") {
+			// Handle these special cases directly without redirecting or modifying them
+			req.SetRequestURI("https://roblox.com/" + urlPath[0] + "/" + urlPath[1])
+		} else {
+			req.SetRequestURI("https://" + urlPath[0] + ".roblox.com/" + urlPath[1])
+		}
 	}
 
 	req.SetBody(ctx.Request.Body())
