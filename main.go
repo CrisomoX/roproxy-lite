@@ -12,6 +12,7 @@ import (
 var timeout, _ = strconv.Atoi(os.Getenv("TIMEOUT"))
 var retries, _ = strconv.Atoi(os.Getenv("RETRIES"))
 var port = os.Getenv("PORT")
+var host = os.Getenv("HOST") // Set this to the base URL of your proxy
 
 var client *fasthttp.Client
 
@@ -37,7 +38,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Check for the specific URLs to allow direct access
+	// Check for special URLs (do not redirect to roblox.com)
 	if isSpecialURL(ctx) {
 		// Handle special cases (no redirection, just handle like subdomains)
 		response := makeRequest(ctx, 1, true)
@@ -52,14 +53,14 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Default request handling for other requests
+	// Default request handling
 	if len(strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)) < 2 {
 		ctx.SetStatusCode(400)
 		ctx.SetBody([]byte("URL format invalid."))
 		return
 	}
 
-	// Default request handling
+	// Default request handling for other requests
 	response := makeRequest(ctx, 1, false)
 
 	defer fasthttp.ReleaseResponse(response)
@@ -95,8 +96,8 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSpecial bool) *fasthtt
 	url := strings.SplitN(string(ctx.Request.Header.RequestURI())[1:], "/", 2)
 
 	if isSpecial {
-		// Handle the special cases by sending them to the proxy site instead of roblox.com
-		req.SetRequestURI("https://" + os.Getenv("HOST") + "/" + url[0] + "/" + url[1])
+		// For special paths, handle them on the proxy site
+		req.SetRequestURI("https://" + host + "/" + url[0] + "/" + url[1])
 	} else {
 		// Default behavior for other paths (redirect to roblox.com)
 		req.SetRequestURI("https://" + url[0] + ".roblox.com/" + url[1])
