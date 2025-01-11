@@ -2,12 +2,11 @@ package main
 
 import (
 	"log"
+	"time"
 	"os"
+	"github.com/valyala/fasthttp"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/valyala/fasthttp"
 )
 
 var timeout, _ = strconv.Atoi(os.Getenv("TIMEOUT"))
@@ -16,7 +15,7 @@ var port = os.Getenv("PORT")
 
 var client *fasthttp.Client
 
-// Allowed paths
+// Allowed paths for specific reports
 var allowedPaths = []string{
 	"/illegal-content-report",
 	"/ca-1394-report",
@@ -24,7 +23,7 @@ var allowedPaths = []string{
 
 func main() {
 	h := requestHandler
-
+	
 	client = &fasthttp.Client{
 		ReadTimeout:        time.Duration(timeout) * time.Second,
 		MaxIdleConnDuration: 60 * time.Second,
@@ -47,8 +46,8 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	// Ensure the URL path is valid
 	path := string(ctx.Path())
 	if isAllowedURL(path) {
-		// For allowed paths, forward the request to roblox.com
-		response := makeRequest(ctx, 1, false) // Proxy to https://roblox.com
+		// For allowed paths, proxy to roblox.com directly, no redirection
+		response := makeRequest(ctx, 1, false) // False means no subdomain, use roblox.com
 		defer fasthttp.ReleaseResponse(response)
 
 		// Set the response body and status code
@@ -62,7 +61,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		})
 	} else {
 		// For all other paths, proxy to subdomain proxy (e.g., games.roblox.com)
-		response := makeRequest(ctx, 1, true) // Proxy to dynamic subdomain
+		response := makeRequest(ctx, 1, true) // True means subdomain, proxy to <subdomain>.roblox.com
 		defer fasthttp.ReleaseResponse(response)
 
 		// Set the response body and status code
@@ -107,7 +106,7 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSubdomain bool) *fasth
 		urlParts := strings.SplitN(string(ctx.Path()), "/", 2)
 		if len(urlParts) < 2 {
 			resp := fasthttp.AcquireResponse()
-			resp.SetBody([]byte("URL format invalid."))
+			resp.SetBody([]byte("URL format invalid.."))
 			resp.SetStatusCode(400) // Bad Request
 			return resp
 		}
@@ -118,6 +117,7 @@ func makeRequest(ctx *fasthttp.RequestCtx, attempt int, isSubdomain bool) *fasth
 		requestURI = "https://roblox.com" + string(ctx.Path())
 	}
 
+	// Set the request URI to the corresponding Roblox URL
 	req.SetRequestURI(requestURI)
 	req.SetBody(ctx.Request.Body())
 
